@@ -661,10 +661,7 @@ function navHtml(active: NavTab): string {
       return `<a href="${t.href}" class="${cls}" data-tab="${t.id}" ${t.admin ? 'data-requires-auth="true"' : ""}>${t.label}</a>`;
     })
     .join("")}</nav>
-    <div class="auth-actions">
-      <button type="button" class="login-btn" id="admin-login-btn">Admin Login</button>
-      <button type="button" class="logout-btn" id="admin-logout-btn" style="display:none">Log out</button>
-    </div>`;
+    <button type="button" class="logout-btn" id="admin-logout-btn" style="display:none" title="End admin session">Log out</button>`;
 }
 
 function adminAuthChrome(active: NavTab): string {
@@ -700,7 +697,6 @@ function adminAuthChrome(active: NavTab): string {
       const overlay = document.getElementById("admin-auth-overlay");
       const form = document.getElementById("admin-login-form");
       const errEl = document.getElementById("admin-auth-err");
-      const loginBtn = document.getElementById("admin-login-btn");
       const logoutBtn = document.getElementById("admin-logout-btn");
       const main = document.querySelector(".main");
 
@@ -732,6 +728,23 @@ function adminAuthChrome(active: NavTab): string {
         overlay?.classList.remove("show");
         hideErr();
       }
+      function hasSecretQuery() {
+        try {
+          const q = new URLSearchParams(window.location.search);
+          return q.get("root") === "secure" || q.get("admin") === "true";
+        } catch {
+          return false;
+        }
+      }
+      function scrubSecretQuery() {
+        try {
+          const url = new URL(window.location.href);
+          if (!url.searchParams.has("root") && !url.searchParams.has("admin")) return;
+          url.searchParams.delete("root");
+          url.searchParams.delete("admin");
+          window.history.replaceState({}, "", url.pathname + (url.search || "") + url.hash);
+        } catch {}
+      }
 
       async function isAuthenticated() {
         const token = getToken();
@@ -752,7 +765,6 @@ function adminAuthChrome(active: NavTab): string {
         document.querySelectorAll(".admin-tab").forEach((el) => {
           el.classList.toggle("visible", unlocked);
         });
-        if (loginBtn) loginBtn.style.display = unlocked ? "none" : "inline-block";
         if (logoutBtn) logoutBtn.style.display = unlocked ? "inline-block" : "none";
         if (requiresAuth && main) {
           main.classList.toggle("locked-admin", !unlocked);
@@ -771,9 +783,9 @@ function adminAuthChrome(active: NavTab): string {
         });
       });
 
-      loginBtn?.addEventListener("click", openModal);
       document.getElementById("admin-login-cancel")?.addEventListener("click", () => {
         closeModal();
+        scrubSecretQuery();
         if (requiresAuth) window.location.href = "/dashboard/user";
       });
       logoutBtn?.addEventListener("click", () => {
@@ -798,8 +810,10 @@ function adminAuthChrome(active: NavTab): string {
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.error || "Invalid credentials");
           setToken(data.token);
+          scrubSecretQuery();
           applyUnlocked(true);
           if (requiresAuth) window.location.reload();
+          else window.location.href = "/dashboard/admin";
         } catch (ex) {
           showErr(ex.message || "Login failed");
         } finally {
@@ -807,7 +821,12 @@ function adminAuthChrome(active: NavTab): string {
         }
       });
 
-      isAuthenticated().then(applyUnlocked);
+      isAuthenticated().then(async (unlocked) => {
+        applyUnlocked(unlocked);
+        if (!unlocked && hasSecretQuery()) {
+          openModal();
+        }
+      });
     })();
   </script>`;
 }
