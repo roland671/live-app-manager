@@ -1,0 +1,58 @@
+{
+  "name": "live-app-manager",
+  "version": "1.0.0",
+  "description": "Live App Manager — production maintenance & active uptime telemetry. Pay-per-bug-fix, no-log-fees live app maintenance tool for runtime troubleshooting, unhandled exceptions, memory leak detection, and zero-downtime monitoring.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "live-app-manager",
+    "live-app-maintenance-tool",
+    "no-log-fees",
+    "pay-per-bug-fix",
+    "production-monitoring",
+    "runtime-troubleshooting",
+    "unhandled-exceptions",
+    "memory-leak-detection",
+    "prevent-app-pauses",
+    "application-hangs",
+    "uptime-telemetry",
+    "supabase",
+    "zero-downtime",
+    "vibe-coding-utility"
+  ],
+  "author": "Studio / Open Source Telemetry Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/studio-oss/liveapp-oss-backend.git",
+    "directory": "packages/client"
+  },
+  "homepage": "https://github.com/studio-oss/liveapp-oss-backend#readme",
+  "bugs": {
+    "url": "https://github.com/studio-oss/liveapp-oss-backend/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
