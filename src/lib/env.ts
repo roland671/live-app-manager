@@ -14,6 +14,26 @@ export function envValue(name: string): string | undefined {
   return raw.trim().replace(/^["']|["']$/g, "");
 }
 
+/** True on Render / production hosts. */
+export function isProduction(): boolean {
+  const nodeEnv = (envValue("NODE_ENV") ?? "").toLowerCase();
+  if (nodeEnv === "production") return true;
+  // Render sets RENDER=true
+  if ((envValue("RENDER") ?? "").toLowerCase() === "true") return true;
+  return false;
+}
+
+/**
+ * Live user dashboard is the default.
+ * Demo sandbox visuals only when ALLOW_DEMO_DASHBOARD=true (local visual QA).
+ */
+export function useLiveDashboard(): boolean {
+  if ((envValue("ALLOW_DEMO_DASHBOARD") ?? "").toLowerCase() === "true") {
+    return false;
+  }
+  return true;
+}
+
 /** True when Supabase URL/key are missing, placeholders, or not a valid HTTP(S) URL. */
 export function hasInvalidSupabaseConfig(): boolean {
   const url = envValue("NEXT_PUBLIC_SUPABASE_URL");

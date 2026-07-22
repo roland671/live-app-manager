@@ -47,11 +47,10 @@ if (existsSync(publicDir)) {
 }
 
 /**
- * Root URL → primary Dashboard UI (User view).
- * API routes above take precedence; static files do not shadow /api/* or /dashboard/*.
+ * Root URL → live User Dashboard (no demo workspace query).
  */
 app.get("/", (_req, res) => {
-  res.redirect(302, "/dashboard/user?workspaceId=demo");
+  res.redirect(302, "/dashboard/user");
 });
 
 app.listen(PORT, () => {

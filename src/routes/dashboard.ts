@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { getDb } from "../lib/db.js";
+import { useLiveDashboard } from "../lib/env.js";
 
 const SANDBOX_LIMIT = 10;
 const OPEN_SOURCE_STATUS = "open_source";
@@ -330,6 +331,28 @@ const sharedStyles = `
   }
   .sig-card td.mono { font-family: var(--mono); font-size: 13px; }
   .empty { color: var(--muted); font-size: 14px; padding: 4px 0; }
+  .empty-state {
+    text-align: center;
+    padding: 36px 24px;
+  }
+  .empty-state h3 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+  .empty-state p {
+    font-size: 15px;
+    color: var(--body);
+    max-width: 420px;
+    margin: 0 auto;
+    line-height: 1.5;
+  }
+  .empty-state .icon {
+    font-size: 28px;
+    color: var(--green);
+    margin-bottom: 10px;
+  }
 
   /* Admin */
   .metric-row {
@@ -571,7 +594,7 @@ const sharedStyles = `
 
 function navHtml(active: NavTab): string {
   const tabs: Array<{ id: NavTab; href: string; label: string }> = [
-    { id: "user", href: "/dashboard/user?workspaceId=demo", label: "User" },
+    { id: "user", href: "/dashboard/user", label: "User" },
     { id: "admin", href: "/dashboard/admin", label: "Admin" },
     { id: "health", href: "/dashboard/health", label: "Health" },
   ];
@@ -706,6 +729,43 @@ function stageGridHtml(): string {
   `;
 }
 
+function liveSignaturesSection(rows: BugSignatureRow[]): string {
+  if (rows.length === 0) {
+    return `
+      <div class="card empty-state">
+        <div class="icon">✓</div>
+        <h3>System Healthy: No exceptions captured yet</h3>
+        <p>
+          Live telemetry is connected. When your apps report errors via
+          <code>POST /api/v1/track</code> or <code>trackLiveState</code>, unique
+          bug signatures will appear here in real time.
+        </p>
+      </div>
+    `;
+  }
+
+  const cards = rows
+    .slice(0, 9)
+    .map((b) => {
+      const open = Number(b.total_occurrences ?? 0) > 0;
+      return `
+      <article class="card stage-card ${open ? "open" : "done"}">
+        <div class="stage-band">
+          <span class="kicker">${escapeHtml(b.error_type || "Error")}</span>
+          <span class="badge muted">${escapeHtml(b.total_occurrences)}×</span>
+        </div>
+        <div class="stage-body">
+          <h3>${escapeHtml(b.message)}</h3>
+          <div class="file">${escapeHtml(String(b.signature_hash).slice(0, 20))}…</div>
+          <p class="desc">Last seen ${escapeHtml(b.last_seen_at ?? "—")}</p>
+        </div>
+      </article>`;
+    })
+    .join("");
+
+  return `<div class="stage-grid">${cards}</div>`;
+}
+
 function renderUserDashboard(opts: {
   workspaceId: string;
   workspaceName: string;
@@ -715,54 +775,63 @@ function renderUserDashboard(opts: {
   demoMode: boolean;
   rows: BugSignatureRow[];
 }): string {
-  const { workspaceId, workspaceName, status, used, cardAttached, demoMode, rows } = opts;
+  const { workspaceId, workspaceName, status, used, cardAttached, demoMode, rows } =
+    opts;
+  const prod = useLiveDashboard();
+  const showDemoVisuals = demoMode && !prod;
   const pct = Math.min(100, Math.round((used / SANDBOX_LIMIT) * 100));
   const locked = used >= SANDBOX_LIMIT && !cardAttached;
 
-  const bugRows =
+  const bugTable =
     rows.length === 0
-      ? `<p class="empty">${demoMode ? "Demo mode — lifecycle stages above illustrate the full error workflow." : "No signatures captured yet."}</p>`
-      : `<table>
-          <thead><tr><th>Type</th><th>Message</th><th>Hash</th><th>Count</th></tr></thead>
-          <tbody>
-            ${rows
-              .slice(0, 5)
-              .map(
-                (b) => `<tr>
-                  <td>${escapeHtml(b.error_type)}</td>
-                  <td>${escapeHtml(b.message)}</td>
-                  <td class="mono">${escapeHtml(String(b.signature_hash).slice(0, 14))}…</td>
-                  <td>${escapeHtml(b.total_occurrences)}</td>
-                </tr>`,
-              )
-              .join("")}
-          </tbody>
-        </table>`;
+      ? ""
+      : `<div class="card sig-card">
+          <div class="section-title">Captured signatures</div>
+          <table>
+            <thead><tr><th>Type</th><th>Message</th><th>Hash</th><th>Count</th></tr></thead>
+            <tbody>
+              ${rows
+                .slice(0, 12)
+                .map(
+                  (b) => `<tr>
+                    <td>${escapeHtml(b.error_type)}</td>
+                    <td>${escapeHtml(b.message)}</td>
+                    <td class="mono">${escapeHtml(String(b.signature_hash).slice(0, 14))}…</td>
+                    <td>${escapeHtml(b.total_occurrences)}</td>
+                  </tr>`,
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>`;
+
+  const activity = showDemoVisuals
+    ? `${stageGridHtml()}
+       <div class="card sig-card">
+         <div class="section-title">Captured signatures</div>
+         <p class="empty">Demo mode — lifecycle stages above illustrate the full error workflow.</p>
+       </div>`
+    : liveSignaturesSection(rows) + bugTable;
 
   return `
     <div class="card meta-card">
       <span class="name">${escapeHtml(workspaceName)}</span>
       <code>${escapeHtml(workspaceId)}</code>
       <span class="badge cobalt">${escapeHtml(status)}</span>
-      ${demoMode ? `<span class="badge muted">visual fallback</span>` : ""}
+      ${showDemoVisuals ? `<span class="badge muted">visual fallback</span>` : prod ? `<span class="badge green">live</span>` : ""}
       ${cardAttached ? `<span class="badge cobalt">card on</span>` : locked ? `<span class="badge crimson">locked</span>` : `<span class="badge amber">sandbox</span>`}
       <div class="sandbox-inline" title="Sandbox usage">
         <span class="lbl">Sandbox</span>
         <div class="meter"><i class="${locked ? "locked" : ""}" style="width:${pct}%"></i></div>
         <span class="pct">${used}/${SANDBOX_LIMIT}</span>
       </div>
-      <button class="primary" id="attach-card" ${cardAttached || demoMode ? "disabled" : ""} data-workspace="${escapeHtml(workspaceId)}">
+      <button class="primary" id="attach-card" ${cardAttached || showDemoVisuals ? "disabled" : ""} data-workspace="${escapeHtml(workspaceId)}">
         ${cardAttached ? "Card attached" : "Attach Card"}
       </button>
       <span id="toast" class="toast"></span>
     </div>
 
-    ${stageGridHtml()}
-
-    <div class="card sig-card">
-      <div class="section-title">Captured signatures</div>
-      ${bugRows}
-    </div>
+    ${activity}
   `;
 }
 
@@ -840,44 +909,102 @@ const MOCK_WORKSPACES: Array<{
 
 /** GET /dashboard/user */
 router.get("/dashboard/user", async (req: Request, res: Response) => {
+  const live = useLiveDashboard();
+
   try {
-    const requestedId =
+    const db = getDb();
+    const queryId =
       typeof req.query.workspaceId === "string" && req.query.workspaceId.length > 0
         ? req.query.workspaceId
-        : DEMO_WORKSPACE_ID;
+        : "";
 
-    let workspace: WorkspaceRow | null = null;
-    let rows: BugSignatureRow[] = [];
+    const loadWorkspace = async (
+      id: string,
+    ): Promise<{ workspace: WorkspaceRow; rows: BugSignatureRow[] } | null> => {
+      const { data, error } = await db
+        .from("workspaces")
+        .select("id, status, lifetime_unique_bugs, stripe_payment_method_attached")
+        .eq("id", id)
+        .maybeSingle();
+      if (error || !data) return null;
+      const workspace = data as WorkspaceRow;
+      const bugsRes = await db
+        .from("bug_signatures")
+        .select(
+          "signature_hash, error_type, message, total_occurrences, first_seen_at, last_seen_at",
+        )
+        .eq("workspace_id", id)
+        .order("last_seen_at", { ascending: false });
+      return {
+        workspace,
+        rows: (bugsRes.data ?? []) as BugSignatureRow[],
+      };
+    };
+
+    // Live / production path: never serve demo mock — resolve a real workspace from DB
+    if (live) {
+      let loaded: { workspace: WorkspaceRow; rows: BugSignatureRow[] } | null =
+        null;
+      if (queryId && !isPlaceholderWorkspaceId(queryId)) {
+        loaded = await loadWorkspace(queryId);
+      }
+      if (!loaded) {
+        const { data: all } = await db
+          .from("workspaces")
+          .select("id, status, lifetime_unique_bugs, stripe_payment_method_attached")
+          .order("id", { ascending: true });
+        const first = ((all ?? []) as WorkspaceRow[]).find(
+          (w) => w.status === "sandbox" || w.status === OPEN_SOURCE_STATUS,
+        );
+        if (first) {
+          loaded = await loadWorkspace(first.id);
+        }
+      }
+
+      if (!loaded) {
+        const body = `
+          <div class="card empty-state">
+            <div class="icon">✓</div>
+            <h3>System Healthy: No exceptions captured yet</h3>
+            <p>
+              No live workspace is provisioned for this environment yet.
+              <a href="/register">Create a free sandbox</a> to receive your Workspace ID,
+              then start tracking with <code>trackLiveState</code>.
+            </p>
+          </div>`;
+        res.type("html").send(layout("User Dashboard", "user", body));
+        return;
+      }
+
+      const body = renderUserDashboard({
+        workspaceId: loaded.workspace.id,
+        workspaceName: `Workspace ${loaded.workspace.id.slice(0, 8)}…`,
+        status: String(loaded.workspace.status),
+        used: Number(loaded.workspace.lifetime_unique_bugs ?? 0),
+        cardAttached: loaded.workspace.stripe_payment_method_attached === true,
+        demoMode: false,
+        rows: loaded.rows,
+      });
+      res.type("html").send(layout("User Dashboard", "user", body, userScripts(false)));
+      return;
+    }
+
+    // Explicit demo mode (ALLOW_DEMO_DASHBOARD=true only)
+    const requestedId = queryId || DEMO_WORKSPACE_ID;
     let useDemo = isPlaceholderWorkspaceId(requestedId);
+    let loaded: { workspace: WorkspaceRow; rows: BugSignatureRow[] } | null =
+      null;
 
     if (!useDemo) {
       try {
-        const db = getDb();
-        const { data, error } = await db
-          .from("workspaces")
-          .select("id, status, lifetime_unique_bugs, stripe_payment_method_attached")
-          .eq("id", requestedId)
-          .maybeSingle();
-
-        if (!error && data) {
-          workspace = data as WorkspaceRow;
-          const bugsRes = await db
-            .from("bug_signatures")
-            .select(
-              "signature_hash, error_type, message, total_occurrences, first_seen_at, last_seen_at",
-            )
-            .eq("workspace_id", requestedId)
-            .order("last_seen_at", { ascending: false });
-          rows = (bugsRes.data ?? []) as BugSignatureRow[];
-        } else {
-          useDemo = true;
-        }
+        loaded = await loadWorkspace(requestedId);
+        if (!loaded) useDemo = true;
       } catch {
         useDemo = true;
       }
     }
 
-    if (useDemo || !workspace) {
+    if (useDemo || !loaded) {
       const body = renderUserDashboard({
         workspaceId: DEMO_WORKSPACE_ID,
         workspaceName: DEMO_WORKSPACE_NAME,
@@ -892,16 +1019,21 @@ router.get("/dashboard/user", async (req: Request, res: Response) => {
     }
 
     const body = renderUserDashboard({
-      workspaceId: workspace.id,
-      workspaceName: `Workspace ${workspace.id.slice(0, 8)}…`,
-      status: String(workspace.status),
-      used: Number(workspace.lifetime_unique_bugs ?? 0),
-      cardAttached: workspace.stripe_payment_method_attached === true,
+      workspaceId: loaded.workspace.id,
+      workspaceName: `Workspace ${loaded.workspace.id.slice(0, 8)}…`,
+      status: String(loaded.workspace.status),
+      used: Number(loaded.workspace.lifetime_unique_bugs ?? 0),
+      cardAttached: loaded.workspace.stripe_payment_method_attached === true,
       demoMode: false,
-      rows,
+      rows: loaded.rows,
     });
     res.type("html").send(layout("User Dashboard", "user", body, userScripts(false)));
-  } catch {
+  } catch (err) {
+    if (live) {
+      const msg = err instanceof Error ? err.message : "Unable to load live dashboard";
+      errorPage(res, 500, msg);
+      return;
+    }
     const body = renderUserDashboard({
       workspaceId: DEMO_WORKSPACE_ID,
       workspaceName: DEMO_WORKSPACE_NAME,
@@ -944,11 +1076,12 @@ router.get("/dashboard/admin", async (_req: Request, res: Response) => {
 
     const freeSandbox = list.filter((w) => !w.stripe_payment_method_attached).length;
     const paying = list.filter((w) => w.stripe_payment_method_attached === true).length;
-    const integrations = Math.max(list.length * 3, Number(bugCount ?? 0) + list.length, 12);
+    const integrations = list.length * 3 + Number(bugCount ?? 0);
     const latencyAvg = 58;
+    const prod = useLiveDashboard();
 
-    const displayFree = list.length === 0 ? 3 : freeSandbox;
-    const displayPaying = list.length === 0 ? 2 : paying;
+    const displayFree = freeSandbox;
+    const displayPaying = paying;
 
     const latencyBars = [35, 44, 30, 58, 41, 78, 48, 39, 96, 50, 37, 45]
       .map((h) => `<div class="bar${h > 70 ? " hot" : ""}" style="height:${h}%"></div>`)
@@ -956,24 +1089,33 @@ router.get("/dashboard/admin", async (_req: Request, res: Response) => {
 
     const liveRows =
       list.length > 0
-        ? list.slice(0, 8).map((w) => ({
+        ? list.slice(0, 12).map((w) => ({
             id: w.id,
             name: w.id.slice(0, 8),
             used: Number(w.lifetime_unique_bugs ?? 0),
             card: w.stripe_payment_method_attached === true,
             live: true as const,
           }))
-        : MOCK_WORKSPACES.map((w) => ({ ...w, live: false as const }));
+        : prod
+          ? []
+          : MOCK_WORKSPACES.map((w) => ({ ...w, live: false as const }));
 
-    const workspaceLines = `<div class="ws-list">${liveRows
-      .map((w) => {
-        const actions = w.live
-          ? `<div class="actions">
+    const workspaceLines =
+      liveRows.length === 0
+        ? `<div class="empty-state" style="padding:24px">
+             <div class="icon">✓</div>
+             <h3>System Healthy: No exceptions captured yet</h3>
+             <p>No live workspaces provisioned. <a href="/register">Register a sandbox</a> to start ingesting production telemetry.</p>
+           </div>`
+        : `<div class="ws-list">${liveRows
+            .map((w) => {
+              const actions = w.live
+                ? `<div class="actions">
               <button class="danger" data-action="reset" data-id="${escapeHtml(w.id)}">Reset</button>
               <button data-action="toggle" data-id="${escapeHtml(w.id)}">${w.card ? "Detach" : "Attach"}</button>
             </div>`
-          : `<div class="actions"><span class="badge muted">demo row</span></div>`;
-        return `<div class="ws-row">
+                : `<div class="actions"><span class="badge muted">demo row</span></div>`;
+              return `<div class="ws-row">
           <div class="left">
             <strong style="font-size:14px">${escapeHtml(w.name)}</strong>
             <code>${escapeHtml(w.id)}</code>
@@ -982,8 +1124,8 @@ router.get("/dashboard/admin", async (_req: Request, res: Response) => {
           </div>
           ${actions}
         </div>`;
-      })
-      .join("")}</div>`;
+            })
+            .join("")}</div>`;
 
     const body = `
       <div class="metric-row">
@@ -1003,7 +1145,7 @@ router.get("/dashboard/admin", async (_req: Request, res: Response) => {
         </div>
         <div class="card panel-card">
           <div class="panel-head">
-            <h2>Workspaces · ${list.length || MOCK_WORKSPACES.length} shown · ${bugCount ?? 0} signatures</h2>
+            <h2>Workspaces · ${list.length} shown · ${bugCount ?? 0} signatures</h2>
           </div>
           <div class="panel-body">${workspaceLines}</div>
         </div>

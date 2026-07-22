@@ -220,7 +220,7 @@ router.get("/register", (_req: Request, res: Response) => {
       <div class="err" id="err"></div>
       <p class="links">
         Already set up?
-        <a href="/dashboard/user?workspaceId=demo">Open dashboard</a>
+        <a href="/dashboard/user">Open dashboard</a>
       </p>
     </div>
   </div>
