@@ -1,0 +1,3 @@
+# Static assets directory (CSS/JS/images).
+# The primary Live App Manager UI is server-rendered at /dashboard/*.
+# Root `/` redirects to the User Dashboard.

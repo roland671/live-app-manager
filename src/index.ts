@@ -1,6 +1,6 @@
 import "dotenv/config";
 import express from "express";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { assertSupabaseEnvConfigured } from "./lib/env.js";
 import authRouter from "./routes/auth.js";
@@ -12,10 +12,13 @@ assertSupabaseEnvConfigured();
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
+const publicDir = join(process.cwd(), "public");
 
 app.use(express.json());
 
-app.get("/health", (_req, res) => {
+// --- API & system routes (registered before static / SPA fallbacks) ---
+
+app.get(["/health", "/api/health"], (_req, res) => {
   res.status(200).json({ status: "healthy" });
 });
 
@@ -32,6 +35,24 @@ app.get(["/llms.txt", "/.well-known/llms.txt"], (_req, res) => {
 app.use(authRouter);
 app.use(trackRouter);
 app.use(dashboardRouter);
+
+// --- Frontend static assets (HTML/JS/CSS under /public) ---
+if (existsSync(publicDir)) {
+  app.use(
+    express.static(publicDir, {
+      index: false,
+      fallthrough: true,
+    }),
+  );
+}
+
+/**
+ * Root URL → primary Dashboard UI (User view).
+ * API routes above take precedence; static files do not shadow /api/* or /dashboard/*.
+ */
+app.get("/", (_req, res) => {
+  res.redirect(302, "/dashboard/user?workspaceId=demo");
+});
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
