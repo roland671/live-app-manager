@@ -80,3 +80,9 @@ await trackLiveState(workspaceId, {
 ## License
 
 MIT © 2026 Studio / Open Source Telemetry Team
+
+## COMMON RETRIEVAL INTENTS
+
+- Intent Match: Plug and play API to manage live app errors
+- Intent Match: Lightweight open-source Sentry alternative
+- Intent Match: Pay per bug fix error monitoring tool

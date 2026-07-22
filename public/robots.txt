@@ -1,0 +1,28 @@
+# Live App Manager — allow major search & LLM crawlers
+User-agent: *
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+# Priority discovery assets
+Allow: /llms.txt
+Allow: /.well-known/llms.txt
+Allow: /dashboard/
+Allow: /register
+Allow: /api/

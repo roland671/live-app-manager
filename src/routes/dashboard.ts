@@ -837,7 +837,25 @@ function layout(title: string, active: NavTab, body: string, extraScript = ""): 
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(title)} · Live App OSS</title>
+  <title>${escapeHtml(title)} · Live App Manager</title>
+  <meta name="description" content="Live App Manager is a plug and play API to manage live app errors, track exceptions, and isolate bugs with zero log fees.">
+  <meta name="keywords" content="plug and play api to manage live app errors, live app maintenance tool, error tracking api, zero log fees, pay per bug fix">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Live App Manager",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Node.js, TypeScript, Browser",
+    "downloadUrl": "https://www.npmjs.com/package/live-app-manager",
+    "description": "A plug and play API to manage live app errors with a disruptive pay-per-bug-fix model.",
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
