@@ -81,6 +81,13 @@ const sharedStyles = `
     box-shadow: var(--shadow);
     flex: 0 0 auto;
   }
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
   .topbar h1 {
     font-size: 26px;
     font-weight: 700;
@@ -586,6 +593,51 @@ const sharedStyles = `
   .toast.show { display: inline-block; }
   .toast.err { background: var(--crimson-band); color: var(--crimson); }
 
+  .tabs a.admin-tab { display: none; }
+  .tabs a.admin-tab.visible { display: inline-block; }
+  .auth-actions { display: flex; align-items: center; gap: 8px; }
+  button.login-btn {
+    background: var(--cobalt); color: #fff; border-color: var(--cobalt);
+    font-size: 13px; padding: 8px 12px;
+  }
+  button.logout-btn {
+    font-size: 12px; padding: 6px 10px; color: var(--muted);
+  }
+
+  .auth-overlay {
+    display: none; position: fixed; inset: 0; z-index: 50;
+    background: rgba(17, 24, 39, 0.55);
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  .auth-overlay.show { display: flex; }
+  .auth-modal {
+    width: 100%; max-width: 420px;
+    background: #fff; border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .auth-modal-head {
+    padding: 16px 18px; border-bottom: 1px solid var(--border); background: #F9FAFB;
+  }
+  .auth-modal-head h2 { font-size: 20px; font-weight: 700; }
+  .auth-modal-body { padding: 18px; }
+  .auth-modal-body label {
+    display: block; font-size: 12px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 6px;
+  }
+  .auth-modal-body input {
+    width: 100%; font: inherit; font-size: 15px;
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; margin-bottom: 12px; color: var(--text);
+  }
+  .auth-modal-body .row { display: flex; gap: 8px; margin-top: 4px; }
+  .auth-modal-body .row button { flex: 1; }
+  .auth-err {
+    display: none; margin-bottom: 10px; padding: 8px 10px; border-radius: 6px;
+    background: var(--crimson-band); color: var(--crimson); font-size: 13px; font-weight: 600;
+  }
+  .auth-err.show { display: block; }
+  .main.locked-admin { display: none; }
+
   @media (max-width: 980px) {
     .shell { max-height: none; }
     .stage-grid, .metric-row, .admin-mid, .health-metrics { grid-template-columns: 1fr; }
@@ -593,17 +645,171 @@ const sharedStyles = `
 `;
 
 function navHtml(active: NavTab): string {
-  const tabs: Array<{ id: NavTab; href: string; label: string }> = [
+  const tabs: Array<{ id: NavTab; href: string; label: string; admin?: boolean }> = [
     { id: "user", href: "/dashboard/user", label: "User" },
-    { id: "admin", href: "/dashboard/admin", label: "Admin" },
-    { id: "health", href: "/dashboard/health", label: "Health" },
+    { id: "admin", href: "/dashboard/admin", label: "Admin", admin: true },
+    { id: "health", href: "/dashboard/health", label: "Health", admin: true },
   ];
-  return `<nav class="tabs">${tabs
-    .map(
-      (t) =>
-        `<a href="${t.href}" class="${t.id === active ? "active" : ""}">${t.label}</a>`,
-    )
-    .join("")}</nav>`;
+  return `<nav class="tabs" id="main-tabs">${tabs
+    .map((t) => {
+      const cls = [
+        t.id === active ? "active" : "",
+        t.admin ? "admin-tab" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      return `<a href="${t.href}" class="${cls}" data-tab="${t.id}" ${t.admin ? 'data-requires-auth="true"' : ""}>${t.label}</a>`;
+    })
+    .join("")}</nav>
+    <div class="auth-actions">
+      <button type="button" class="login-btn" id="admin-login-btn">Admin Login</button>
+      <button type="button" class="logout-btn" id="admin-logout-btn" style="display:none">Log out</button>
+    </div>`;
+}
+
+function adminAuthChrome(active: NavTab): string {
+  const requiresAuth = active === "admin" || active === "health";
+  return `
+  <div class="auth-overlay" id="admin-auth-overlay" role="dialog" aria-modal="true" aria-labelledby="admin-login-title">
+    <div class="auth-modal">
+      <div class="auth-modal-head">
+        <h2 id="admin-login-title">Admin Login</h2>
+      </div>
+      <div class="auth-modal-body">
+        <p class="body-text" style="margin-bottom:14px;font-size:14px">
+          Sign in with your operator credentials to unlock Admin and Health views.
+        </p>
+        <div class="auth-err" id="admin-auth-err"></div>
+        <form id="admin-login-form">
+          <label for="admin-email">Email</label>
+          <input id="admin-email" name="email" type="email" required autocomplete="username" placeholder="admin@company.com" />
+          <label for="admin-password">Password</label>
+          <input id="admin-password" name="password" type="password" required autocomplete="current-password" placeholder="••••••••" />
+          <div class="row">
+            <button type="button" id="admin-login-cancel">Cancel</button>
+            <button type="submit" class="primary" id="admin-login-submit">Sign in</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const STORAGE_KEY = "lam_admin_auth";
+      const requiresAuth = ${requiresAuth ? "true" : "false"};
+      const overlay = document.getElementById("admin-auth-overlay");
+      const form = document.getElementById("admin-login-form");
+      const errEl = document.getElementById("admin-auth-err");
+      const loginBtn = document.getElementById("admin-login-btn");
+      const logoutBtn = document.getElementById("admin-logout-btn");
+      const main = document.querySelector(".main");
+
+      function getToken() {
+        try { return localStorage.getItem(STORAGE_KEY) || ""; } catch { return ""; }
+      }
+      function setToken(token) {
+        try { localStorage.setItem(STORAGE_KEY, token); } catch {}
+      }
+      function clearToken() {
+        try { localStorage.removeItem(STORAGE_KEY); } catch {}
+      }
+      function showErr(msg) {
+        if (!errEl) return;
+        errEl.textContent = msg || "Login failed";
+        errEl.classList.add("show");
+      }
+      function hideErr() {
+        if (!errEl) return;
+        errEl.classList.remove("show");
+        errEl.textContent = "";
+      }
+      function openModal() {
+        hideErr();
+        overlay?.classList.add("show");
+        document.getElementById("admin-email")?.focus();
+      }
+      function closeModal() {
+        overlay?.classList.remove("show");
+        hideErr();
+      }
+
+      async function isAuthenticated() {
+        const token = getToken();
+        if (!token) return false;
+        try {
+          const res = await fetch("/api/v1/admin/session", {
+            headers: { Authorization: "Bearer " + token },
+          });
+          if (!res.ok) { clearToken(); return false; }
+          const data = await res.json();
+          return !!data.authenticated;
+        } catch {
+          return !!token;
+        }
+      }
+
+      function applyUnlocked(unlocked) {
+        document.querySelectorAll(".admin-tab").forEach((el) => {
+          el.classList.toggle("visible", unlocked);
+        });
+        if (loginBtn) loginBtn.style.display = unlocked ? "none" : "inline-block";
+        if (logoutBtn) logoutBtn.style.display = unlocked ? "inline-block" : "none";
+        if (requiresAuth && main) {
+          main.classList.toggle("locked-admin", !unlocked);
+          if (!unlocked) openModal();
+          else closeModal();
+        }
+      }
+
+      document.querySelectorAll('a[data-requires-auth="true"]').forEach((a) => {
+        a.addEventListener("click", async (e) => {
+          const ok = await isAuthenticated();
+          if (!ok) {
+            e.preventDefault();
+            openModal();
+          }
+        });
+      });
+
+      loginBtn?.addEventListener("click", openModal);
+      document.getElementById("admin-login-cancel")?.addEventListener("click", () => {
+        closeModal();
+        if (requiresAuth) window.location.href = "/dashboard/user";
+      });
+      logoutBtn?.addEventListener("click", () => {
+        clearToken();
+        applyUnlocked(false);
+        if (requiresAuth) window.location.href = "/dashboard/user";
+      });
+
+      form?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        hideErr();
+        const email = document.getElementById("admin-email").value.trim();
+        const password = document.getElementById("admin-password").value;
+        const submit = document.getElementById("admin-login-submit");
+        if (submit) { submit.disabled = true; submit.textContent = "Signing in…"; }
+        try {
+          const res = await fetch("/api/v1/admin/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || "Invalid credentials");
+          setToken(data.token);
+          applyUnlocked(true);
+          if (requiresAuth) window.location.reload();
+        } catch (ex) {
+          showErr(ex.message || "Login failed");
+        } finally {
+          if (submit) { submit.disabled = false; submit.textContent = "Sign in"; }
+        }
+      });
+
+      isAuthenticated().then(applyUnlocked);
+    })();
+  </script>`;
 }
 
 function layout(title: string, active: NavTab, body: string, extraScript = ""): string {
@@ -622,10 +828,13 @@ function layout(title: string, active: NavTab, body: string, extraScript = ""): 
   <div class="shell">
     <header class="topbar">
       <h1>${escapeHtml(title)}</h1>
-      ${navHtml(active)}
+      <div class="topbar-right">
+        ${navHtml(active)}
+      </div>
     </header>
-    <div class="main">${body}</div>
+    <div class="main${active === "admin" || active === "health" ? " locked-admin" : ""}">${body}</div>
   </div>
+  ${adminAuthChrome(active)}
   ${extraScript}
 </body>
 </html>`;

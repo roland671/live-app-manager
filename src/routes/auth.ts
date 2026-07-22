@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { Router, type Request, type Response } from "express";
+import {
+  issueAdminToken,
+  verifyAdminCredentials,
+  verifyAdminToken,
+} from "../lib/admin-auth.js";
 import { getDb } from "../lib/db.js";
 
 const router = Router();
@@ -53,6 +58,48 @@ router.post("/api/v1/signup", async (req: Request, res: Response) => {
     const message = err instanceof Error ? err.message : "Unexpected server error";
     res.status(500).json({ error: message });
   }
+});
+
+/** POST /api/v1/admin/login — email + password against ADMIN_* env credentials. */
+router.post("/api/v1/admin/login", (req: Request, res: Response) => {
+  const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
+  const password =
+    typeof req.body?.password === "string" ? req.body.password : "";
+
+  if (!email || !password) {
+    res.status(400).json({ error: "Email and password are required." });
+    return;
+  }
+
+  if (!verifyAdminCredentials(email, password)) {
+    res.status(401).json({ error: "Invalid admin credentials." });
+    return;
+  }
+
+  const token = issueAdminToken(email);
+  res.status(200).json({
+    ok: true,
+    token,
+    message: "Admin session issued.",
+  });
+});
+
+/** GET /api/v1/admin/session — validate a bearer/token session. */
+router.get("/api/v1/admin/session", (req: Request, res: Response) => {
+  const header = req.headers.authorization;
+  const bearer =
+    typeof header === "string" && header.startsWith("Bearer ")
+      ? header.slice(7)
+      : "";
+  const queryToken =
+    typeof req.query.token === "string" ? req.query.token : "";
+  const token = bearer || queryToken;
+
+  if (!verifyAdminToken(token)) {
+    res.status(401).json({ ok: false, authenticated: false });
+    return;
+  }
+  res.json({ ok: true, authenticated: true });
 });
 
 /** GET /register — onboarding UI: email → workspace token delivery. */
