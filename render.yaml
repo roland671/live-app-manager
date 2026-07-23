@@ -1,0 +1,4 @@
+routes:
+  - type: rewrite
+    source: /
+    destination: https://live-app-manager-landing.onrender.com
