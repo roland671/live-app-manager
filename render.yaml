@@ -1,4 +1,6 @@
 routes:
+  - type: passthrough
+    source: /dashboard/*
   - type: rewrite
     source: /
     destination: https://live-app-manager-landing.onrender.com
